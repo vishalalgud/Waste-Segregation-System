@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Waste Detection System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0d1117; }
+        .glass-card { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(5px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        #video-stream-container { position: relative; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4); }
+        #video-stream { width: 100%; height: auto; display: block; }
+        .category-text { font-size: 2.25rem; font-weight: 800; line-height: 1; }
+        .instruction-box { min-height: 150px; }
+        .step-item { padding-left: 0.75rem; text-indent: -0.75rem; }
+        .step-item::before { content: "• "; color: #34d399; font-weight: bold; }
+    </style>
+</head>
+<body class="text-white min-h-screen flex items-center justify-center p-6">
+
+    <div class="w-full max-w-6xl space-y-6">
+        
+        <header class="text-center pb-4">
+            <h1 class="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-cyan-400">
+                Advanced EcoSorter
+            </h1>
+            <p class="text-gray-400 mt-1">Real-Time Detection for Waste & Common Objects</p>
+        </header>
+
+        <div class="grid lg:grid-cols-3 gap-6">
+
+            <div class="lg:col-span-2">
+                <div id="video-stream-container">
+                    <img id="video-stream" src="" alt="Live Video Stream">
+                    <div id="status-overlay" class="absolute inset-0 flex items-center justify-center text-2xl font-bold bg-black bg-opacity-70 transition-opacity duration-300">
+                        CONNECTING...
+                    </div>
+                </div>
+            </div>
+
+            <div class="lg:col-span-1 space-y-4">
+                
+                <div id="detection-card" class="glass-card p-6 rounded-xl border-l-4 border-cyan-500 transition-all duration-300">
+                    <p id="det-confidence" class="text-sm font-semibold mb-2 text-gray-400">Confidence: 0%</p>
+                    <h3 id="det-category" class="category-text" style="color: #94a3b8;">SCANNING...</h3>
+                    <p id="det-label" class="text-lg mt-2 font-semibold text-gray-300">Awaiting object detection.</p>
+                </div>
+                
+                <div class="glass-card p-6 rounded-xl instruction-box">
+                    <h4 class="text-lg font-bold mb-3 border-b border-gray-700 pb-2">Disposal Steps & Precautions</h4>
+                    <ul id="det-steps" class="space-y-2 text-sm text-gray-300">
+                        </ul>
+                    <h4 class="text-lg font-bold mt-4 mb-2 border-b border-gray-700 pb-2 text-red-400">Precautions</h4>
+                    <ul id="det-precautions" class="space-y-2 text-sm text-red-300">
+                        </ul>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const WS_URL = "ws://127.0.0.1:8000/ws/video"; 
+        let ws = null;
+        
+        const videoStream = document.getElementById('video-stream');
+        const statusOverlay = document.getElementById('status-overlay');
+        const detectionCard = document.getElementById('detection-card');
+        const categoryElement = document.getElementById('det-category');
+        const labelElement = document.getElementById('det-label');
+        const confidenceElement = document.getElementById('det-confidence');
+        const stepsElement = document.getElementById('det-steps');
+        const precautionsElement = document.getElementById('det-precautions');
+
+        function connectWebSocket() {
+            if (ws) { ws.close(); ws = null; }
+            
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = () => {
+                statusOverlay.style.opacity = '0';
+                statusOverlay.textContent = 'LIVE STREAM';
+                console.log("WebSocket connection established.");
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.error) {
+                    statusOverlay.textContent = `ERROR: ${data.error}`;
+                    statusOverlay.style.opacity = '1';
+                    detectionCard.style.borderColor = '#dc2626'; // Red border
+                    return;
+                }
+
+                // Update Video Frame
+                videoStream.src = data.image;
+
+                // Update Classification Data
+                const wasteData = data.data;
+                const confPercent = (wasteData.conf * 100).toFixed(1);
+                const color = wasteData.color || '#94a3b8';
+
+                // Update Card UI
+                detectionCard.style.borderColor = color;
+                categoryElement.style.color = color;
+                
+                categoryElement.textContent = wasteData.category;
+                labelElement.textContent = wasteData.label; 
+                confidenceElement.textContent = `Confidence: ${confPercent}%`;
+                
+                // Update Steps/Precautions
+                stepsElement.innerHTML = '';
+                (wasteData.steps || ['No specific steps defined.']).forEach(step => {
+                     const li = document.createElement('li');
+                     li.className = 'step-item'; // Use custom class for styling
+                     li.textContent = step;
+                     stepsElement.appendChild(li);
+                });
+
+                // Update Precautions
+                precautionsElement.innerHTML = '';
+                (wasteData.precautions || ['None specified.']).forEach(prec => {
+                     const li = document.createElement('li');
+                     li.className = 'step-item';
+                     li.textContent = prec;
+                     precautionsElement.appendChild(li);
+                });
+            };
+
+            ws.onclose = (event) => {
+                statusOverlay.textContent = 'DISCONNECTED';
+                statusOverlay.style.opacity = '1';
+                ws = null;
+                setTimeout(connectWebSocket, 3000); // Attempt reconnection
+            };
+
+            ws.onerror = (err) => {
+                if (ws) ws.close();
+            };
+        }
+        
+        document.addEventListener('DOMContentLoaded', connectWebSocket);
+    </script>
+</body>
+</html>
